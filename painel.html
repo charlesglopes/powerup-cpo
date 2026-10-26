@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Painel do fluxo</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    .kpis { display: flex; gap: 8px; margin-bottom: 12px; }
+    .kpi { flex: 1; border: 1px solid #dfe1e6; border-radius: 4px; padding: 8px; text-align: center; }
+    .kpi .n { font-size: 20px; font-weight: 800; }
+    .kpi .l { font-size: 10px; font-weight: 700; color: #6b778c; text-transform: uppercase; letter-spacing: .4px; }
+    .kpi.vermelho .n { color: #cd513a; }
+    .kpi.amarelo .n { color: #b38600; }
+    .kpi.verde .n { color: #048243; }
+    h4 { font-size: 12px; margin: 14px 0 6px; color: #5e6c84; text-transform: uppercase; letter-spacing: .4px; }
+    .barra-tipo { margin-bottom: 8px; }
+    .bt-linha { display: flex; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    .bt-linha .nome { flex: 1; }
+    .bt-barra { height: 8px; background: #ebecf0; border-radius: 4px; overflow: hidden; display: flex; }
+    .bt-barra > div { height: 100%; }
+    .legenda { font-size: 10px; color: #6b778c; margin-top: 2px; }
+    .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 3px 0 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; font-size: 10px; text-transform: uppercase; color: #6b778c;
+         border-bottom: 2px solid #dfe1e6; padding: 4px 6px; }
+    td { padding: 5px 6px; border-bottom: 1px solid #ebecf0; }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 10px; font-weight: 700; }
+    .b-verm { background: #ffd6d0; color: #8c2b1d; }
+    .b-ama  { background: #f5e9b8; color: #6b5d07; }
+    .b-verd { background: #e3fcef; color: #04492c; }
+    .b-cin  { background: #ebecf0; color: #42526e; }
+    .vazio { font-size: 13px; color: #6b778c; text-align: center; padding: 20px 0; }
+    .dica { font-size: 11px; color: #6b778c; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div id="conteudo"><div class="vazio">Carregando…</div></div>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+
+    Promise.all([
+      t.cards('all'),
+      t.lists('all'),
+      t.get('board', 'shared', K.config)
+    ]).then(function (r) {
+      var cards = r[0] || [];
+      var listas = r[1] || [];
+      var cfg = r[2] || {};
+      var hoje = CPO.hojeISO();
+
+      // nome da lista de cada card
+      var nomeLista = {};
+      (listas || []).forEach(function (l) { nomeLista[l.id] = l.name; });
+
+      var dados = (cards || []).filter(function (c) {
+        return c.shared && c.shared[K.triagem] && c.shared[K.triagem].tipo;
+      }).map(function (c) {
+        var tri = c.shared[K.triagem];
+        var et = (c.shared[K.etapas] && c.shared[K.etapas].etapas) || [];
+        var fin = c.shared[K.financas] || {};
+        var conc = et.filter(function (e) { return e.status === 'c'; }).length;
+        var emAnd = et.filter(function (e) { return e.status === 'a'; }).length;
+        var atrasadas = et.filter(function (e) {
+          return e.status !== 'c' && e.prazo && e.prazo < hoje;
+        }).length;
+        var gasto = (fin.itens || []).reduce(function (s, it) { return s + (Number(it.valor) || 0); }, 0);
+        return {
+          id: c.id, nome: c.name || '(sem nome)', lista: nomeLista[c.idList] || '—',
+          tri: tri, nEtapas: et.length, conc: conc, emAnd: emAnd, atrasadas: atrasadas,
+          orcado: Number(fin.orcado) || 0, gasto: gasto,
+          paradoDias: tri.atualizadoEm ?
+            Math.floor((Date.now() - new Date(tri.atualizadoEm)) / 86400000) : null
+        };
+      });
+
+      var el = document.getElementById('conteudo');
+      if (!dados.length) {
+        el.innerHTML = '<div class="vazio">Nenhum card classificado ainda.<br>' +
+          'Use "Classificar demanda" no verso dos cards.</div>';
+        return;
+      }
+
+      // ---- KPIs ----
+      var atrasados = dados.filter(function (d) { return d.tri.prazo && d.tri.prazo < hoje; }).length;
+      var semResp = dados.filter(function (d) { return !d.tri.resp; }).length;
+      var estourados = dados.filter(function (d) {
+        return d.orcado > 0 && d.gasto > d.orcado;
+      }).length;
+      var totalOrc = dados.reduce(function (s, d) { return s + d.orcado; }, 0);
+
+      var html = '<div class="kpis">';
+      html += kpi(dados.length, 'cards classificados', 'verde');
+      html += kpi(atrasados, 'prazo vencido', atrasados ? 'vermelho' : 'verde');
+      html += kpi(semResp, 'sem responsável', semResp ? 'amarelo' : 'verde');
+      html += kpi(estourados, 'orçamento estourado', estourados ? 'vermelho' : 'verde');
+      html += '</div>';
+      if (totalOrc > 0) {
+        html += '<div class="dica">Orçamento total mapeado no quadro: <b>' + CPO.fmtR$(totalOrc) + '</b></div>';
+      }
+
+      // ---- distribuição por tipo (barra empilhada) ----
+      var tipos = ['Projeto', 'Obra', 'Serviço', 'Demanda interna'];
+      var coresTipo = { 'Projeto': '#0079bf', 'Obra': '#ff9f1a', 'Serviço': '#89609e', 'Demanda interna': '#00aecc' };
+      html += '<h4>Distribuição por tipo</h4>';
+      tipos.forEach(function (tp) {
+        var n = dados.filter(function (d) { return d.tri.tipo === tp; }).length;
+        if (!n) return;
+        var pct = Math.round(n * 100 / dados.length);
+        html += '<div class="barra-tipo"><div class="bt-linha"><span class="nome">' + tp +
+          '</span><span>' + n + '</span></div>' +
+          '<div class="bt-barra"><div style="width:' + pct + '%;background:' + coresTipo[tp] + '"></div></div></div>';
+      });
+
+      // ---- gargalos: etapas em andamento há mais tempo / atrasadas ----
+      var gargalos = [];
+      dados.forEach(function (d) {
+        if (d.atrasadas > 0) gargalos.push({ nome: d.nome, lista: d.lista, motivo: d.atrasadas + ' etapa(s) com prazo vencido', classe: 'b-verm' });
+        if (d.nEtapas > 0 && d.conc === 0 && d.paradoDias != null && d.paradoDias >= 7) {
+          gargalos.push({ nome: d.nome, lista: d.lista, motivo: 'sem etapa concluída há ' + d.paradoDias + ' dias', classe: 'b-ama' });
+        }
+      });
+      html += '<h4>Possíveis gargalos (ponto 2)</h4>';
+      if (gargalos.length) {
+        html += '<table><tr><th>Card</th><th>Lista</th><th>Sinal</th></tr>';
+        gargalos.slice(0, 12).forEach(function (g) {
+          html += '<tr><td>' + CPO.esc(g.nome) + '</td><td>' + CPO.esc(g.lista) +
+            '</td><td><span class="badge ' + g.classe + '">' + CPO.esc(g.motivo) + '</span></td></tr>';
+        });
+        html += '</table>';
+      } else {
+        html += '<div class="dica">Nenhum sinal de gargalo agora. 👍</div>';
+      }
+
+      // ---- tabela de acompanhamento ----
+      html += '<h4>Acompanhamento (ponto 5)</h4>';
+      html += '<table><tr><th>Card</th><th>Tipo</th><th>Etapas</th><th>Prazo</th><th>Execução</th></tr>';
+      dados.sort(function (a, b) {
+        var pa = a.tri.prazo || '9999', pb = b.tri.prazo || '9999';
+        return pa < pb ? -1 : (pa > pb ? 1 : 0);
+      });
+      dados.forEach(function (d) {
+        var pct = d.nEtapas ? Math.round(d.conc * 100 / d.nEtapas) : null;
+        var clsPrazo = 'b-cin', txtPrazo = '—';
+        if (d.tri.prazo) {
+          if (d.tri.prazo < hoje) { clsPrazo = 'b-verm'; txtPrazo = CPO.dataBR(d.tri.prazo) + ' ⚠'; }
+          else { clsPrazo = 'b-verd'; txtPrazo = CPO.dataBR(d.tri.prazo); }
+        }
+        html += '<tr><td>' + CPO.esc(d.nome) + '</td>' +
+          '<td><span class="badge b-cin">' + CPO.esc(d.tri.tipo) + '</span></td>' +
+          '<td>' + (d.nEtapas ? d.conc + '/' + d.nEtapas : '—') + '</td>' +
+          '<td><span class="badge ' + clsPrazo + '">' + txtPrazo + '</span></td>' +
+          '<td>' + (pct != null ? pct + '%' : '—') + '</td></tr>';
+      });
+      html += '</table>';
+
+      // ---- sobrecarga por responsável ----
+      var porResp = {};
+      dados.forEach(function (d) {
+        var r = d.tri.resp || '(sem responsável)';
+        porResp[r] = porResp[r] || { total: 0, ativos: 0 };
+        porResp[r].total++;
+        var ativo = d.nEtapas === 0 || d.conc < d.nEtapas;
+        if (ativo) porResp[r].ativos++;
+      });
+      var chaves = Object.keys(porResp).sort(function (a, b) {
+        return porResp[b].ativos - porResp[a].ativos;
+      });
+      if (chaves.length > 1 || (chaves.length === 1 && chaves[0] !== '(sem responsável)')) {
+        html += '<h4>Carga por responsável (ponto 2 — sobrecarga)</h4>';
+        html += '<table><tr><th>Responsável</th><th>Ativos</th><th>Total</th></tr>';
+        chaves.forEach(function (c) {
+          var p = porResp[c];
+          html += '<tr><td>' + CPO.esc(c) + '</td><td>' + p.ativos + '</td><td>' + p.total + '</td></tr>';
+        });
+        html += '</table>';
+      }
+
+      el.innerHTML = html;
+
+      function kpi(n, label, classe) {
+        return '<div class="kpi ' + classe + '"><div class="n">' + n + '</div><div class="l">' + label + '</div></div>';
+      }
+    });
+  </script>
+</body>
+</html>

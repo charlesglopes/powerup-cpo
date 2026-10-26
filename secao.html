@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Triagem CPO — seção do card</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 8px 12px; color: #172b4d; background: #fff; }
+    .linha1 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 3px;
+             font-size: 11px; font-weight: 700; }
+    .tipo      { background: #0079bf; color: #fff; }
+    .obra      { background: #ff9f1a; color: #172b4d; }
+    .servico   { background: #89609e; color: #fff; }
+    .interna   { background: #00aecc; color: #fff; }
+    .alta      { background: #cd513a; color: #fff; }
+    .media     { background: #d4b21c; color: #172b4d; }
+    .baixa     { background: #6b778c; color: #fff; }
+    .prazo     { background: #ebecf0; color: #172b4d; }
+    .atrasado  { background: #ffd6d0; color: #8c2b1d; }
+    .obs { font-size: 12px; color: #5e6c84; margin-top: 6px; }
+    .vazio { font-size: 12px; color: #6b778c; }
+    .prog { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+    .barra { flex: 1; height: 6px; background: #ebecf0; border-radius: 3px; overflow: hidden; }
+    .barra > div { height: 100%; background: #0079bf; }
+    .ptxt { font-size: 11px; color: #6b778c; font-weight: 600; white-space: nowrap; }
+    .fin { font-size: 11px; color: #6b778c; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div id="conteudo"><span class="vazio">Carregando…</span></div>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+
+    function classeTipo(tipo) {
+      if (tipo === 'Obra') return 'badge tipo obra';
+      if (tipo === 'Serviço') return 'badge tipo servico';
+      if (tipo === 'Demanda interna') return 'badge tipo interna';
+      return 'badge tipo';
+    }
+    function classePrioridade(p) {
+      if (p === 'Alta') return 'badge alta';
+      if (p === 'Baixa') return 'badge baixa';
+      return 'badge media';
+    }
+
+    Promise.all([
+      t.get('card', 'shared', K.triagem),
+      t.get('card', 'shared', K.etapas),
+      t.get('card', 'shared', K.financas)
+    ]).then(function (r) {
+      var d = r[0], et = r[1], fin = r[2];
+      var el = document.getElementById('conteudo');
+      if (!d) { el.innerHTML = '<span class="vazio">Sem triagem.</span>'; return; }
+
+      var hoje = CPO.hojeISO();
+      var html = '<div class="linha1">';
+      html += '<span class="' + classeTipo(d.tipo) + '">' + CPO.esc(d.tipo) + '</span>';
+      html += '<span class="' + classePrioridade(d.prioridade) + '">' + CPO.esc(d.prioridade) + '</span>';
+      if (d.prazo) {
+        var atrasado = d.prazo < hoje;
+        html += '<span class="badge ' + (atrasado ? 'atrasado' : 'prazo') + '">' +
+                (atrasado ? '⚠ ' : '') + 'Prazo: ' + CPO.dataBR(d.prazo) + '</span>';
+      }
+      if (d.resp) html += '<span class="badge prazo">Resp: ' + CPO.esc(d.resp) + '</span>';
+      html += '</div>';
+
+      var list = (et && et.etapas) || [];
+      if (list.length) {
+        var conc = list.filter(function (e) { return e.status === 'c'; }).length;
+        var pct = Math.round(conc * 100 / list.length);
+        html += '<div class="prog"><div class="barra"><div style="width:' + pct + '%"></div></div>' +
+                '<span class="ptxt">' + conc + '/' + list.length + ' etapas</span></div>';
+      }
+
+      if (fin && (Number(fin.orcado) || Number(fin.gasto))) {
+        html += '<div class="fin">Orçado ' + CPO.fmtR$(fin.orcado) +
+                ' · gasto ' + CPO.fmtR$(fin.gasto) + '</div>';
+      }
+
+      if (d.obs) html += '<div class="obs">' + CPO.esc(d.obs) + '</div>';
+      el.innerHTML = html;
+    });
+  </script>
+</body>
+</html>

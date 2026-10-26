@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Relatório de triagem</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    .resumo { font-size: 12px; color: #6b778c; margin-bottom: 10px; }
+    .card-item { padding: 8px 10px; border: 1px solid #dfe1e6; border-radius: 4px; margin-bottom: 6px; }
+    .card-item .nome { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 3px;
+             font-size: 10px; font-weight: 700; margin-right: 4px; }
+    .obra    { background: #ffe2c5; color: #8d4b11; }
+    .projeto { background: #cce4ff; color: #0d4b73; }
+    .servico { background: #e5d9ec; color: #57396b; }
+    .interna { background: #c9f0fa; color: #0b5c6d; }
+    .alta    { background: #ffd6d0; color: #8c2b1d; }
+    .media   { background: #f5e9b8; color: #6b5d07; }
+    .baixa   { background: #dfe1e6; color: #42526e; }
+    .atraso  { background: #ffd6d0; color: #8c2b1d; }
+    .vazio   { font-size: 13px; color: #6b778c; text-align: center; padding: 24px 0; }
+    .obs { font-size: 11px; color: #5e6c84; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div id="relatorio"><div class="vazio">Carregando…</div></div>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+
+    function classeTipo(tipo) {
+      if (tipo === 'Obra') return 'badge obra';
+      if (tipo === 'Serviço') return 'badge servico';
+      if (tipo === 'Demanda interna') return 'badge interna';
+      return 'badge projeto';
+    }
+    function classePrioridade(p) {
+      if (p === 'Alta') return 'badge alta';
+      if (p === 'Baixa') return 'badge baixa';
+      return 'badge media';
+    }
+
+    t.cards('all').then(function (cards) {
+      var el = document.getElementById('relatorio');
+      var hoje = CPO.hojeISO();
+      var comTriagem = (cards || []).filter(function (c) {
+        return c.shared && c.shared[K.triagem] && c.shared[K.triagem].tipo;
+      });
+
+      if (!comTriagem.length) {
+        el.innerHTML = '<div class="vazio">Nenhum card classificado ainda.<br>' +
+                       'Abra um card e use o botão "Classificar demanda".</div>';
+        return;
+      }
+
+      var peso = { 'Alta': 0, 'Média': 1, 'Baixa': 2 };
+      comTriagem.sort(function (a, b) {
+        var pa = peso[a.shared[K.triagem].prioridade] ?? 3;
+        var pb = peso[b.shared[K.triagem].prioridade] ?? 3;
+        if (pa !== pb) return pa - pb;
+        var da = a.shared[K.triagem].prazo || '9999';
+        var db = b.shared[K.triagem].prazo || '9999';
+        return da < db ? -1 : (da > db ? 1 : 0);
+      });
+
+      var atrasados = comTriagem.filter(function (c) {
+        var p = c.shared[K.triagem].prazo;
+        return p && p < hoje;
+      }).length;
+
+      var html = '<div class="resumo">' + comTriagem.length + ' de ' + cards.length +
+                 ' cards classificados · ' + atrasados + ' com prazo vencido</div>';
+
+      comTriagem.forEach(function (c) {
+        var d = c.shared[K.triagem];
+        var et = (c.shared[K.etapas] && c.shared[K.etapas].etapas) || [];
+        var conc = et.filter(function (e) { return e.status === 'c'; }).length;
+        html += '<div class="card-item">';
+        html += '<div class="nome">' + CPO.esc(c.name || '(sem nome)') + '</div>';
+        html += '<span class="' + classeTipo(d.tipo) + '">' + CPO.esc(d.tipo) + '</span>';
+        html += '<span class="' + classePrioridade(d.prioridade) + '">' + CPO.esc(d.prioridade) + '</span>';
+        if (d.prazo) {
+          var atrasado = d.prazo < hoje;
+          html += '<span class="badge ' + (atrasado ? 'atraso' : 'baixa') + '">' +
+                  (atrasado ? '⚠ ' : '') + 'Prazo: ' + CPO.dataBR(d.prazo) + '</span>';
+        }
+        if (d.resp) html += '<span class="badge baixa">Resp: ' + CPO.esc(d.resp) + '</span>';
+        if (et.length) html += '<span class="badge baixa">Etapas: ' + conc + '/' + et.length + '</span>';
+        if (d.sei) html += '<span class="badge baixa">SEI: ' + CPO.esc(d.sei) + '</span>';
+        if (d.obs) html += '<div class="obs">' + CPO.esc(d.obs) + '</div>';
+        html += '</div>';
+      });
+      el.innerHTML = html;
+    });
+  </script>
+</body>
+</html>

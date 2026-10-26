@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Configurar fluxo</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    h4 { font-size: 12px; margin: 14px 0 4px; color: #5e6c84; text-transform: uppercase; letter-spacing: .4px; }
+    .intro { font-size: 12px; color: #5e6c84; }
+    label { display: block; font-size: 11px; font-weight: 600; margin: 8px 0 2px; }
+    textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #dfe1e6;
+        border-radius: 3px; font-size: 12px; background: #fafbfc; resize: vertical; font-family: inherit; }
+    textarea:focus { outline: none; border-color: #0079bf; background: #fff; }
+    .prazos { display: flex; gap: 8px; }
+    .prazos > div { flex: 1; }
+    .prazos input { width: 100%; box-sizing: border-box; padding: 6px 7px; border: 1px solid #dfe1e6;
+        border-radius: 3px; font-size: 12px; background: #fafbfc; }
+    .prazos input:focus { outline: none; border-color: #0079bf; background: #fff; }
+    .dica { font-size: 10px; color: #6b778c; margin-top: 2px; }
+    .salvar { width: 100%; margin-top: 14px; padding: 9px 12px; border: none; border-radius: 3px;
+              background: #0079bf; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .salvar:hover { background: #006caa; }
+  </style>
+</head>
+<body>
+  <p class="intro">Padrões usados em todo o quadro (ponto 3 — padronização). Ficam salvos no armazenamento do quadro.</p>
+
+  <h4>Equipe (sugestão nos campos de responsável)</h4>
+  <textarea id="equipe" rows="3" placeholder="Um nome por linha:&#10;Charles&#10;Ana (projetista)&#10;João (fiscal)"></textarea>
+
+  <h4>Prazo padrão por tipo (dias a partir da classificação)</h4>
+  <div class="prazos">
+    <div><label>Projeto</label><input type="number" id="pProjeto" min="1" placeholder="ex.: 120"></div>
+    <div><label>Obra</label><input type="number" id="pObra" min="1" placeholder="ex.: 360"></div>
+    <div><label>Serviço</label><input type="number" id="pServico" min="1" placeholder="ex.: 30"></div>
+    <div><label>Demanda interna</label><input type="number" id="pInterna" min="1" placeholder="ex.: 10"></div>
+  </div>
+  <div class="dica">Usado para sugerir o prazo no formulário de triagem.</div>
+
+  <h4>Prazo acumulado por etapa (dias do início, por tipo)</h4>
+  <div class="prazos">
+    <div><label>Projeto</label><textarea id="eProjeto" rows="4" placeholder="ex.: 15, 45, 45, 60, 90, 120, 150, 150, 180, 180, 180, 200, 210, 210, 230, 250, 260, 270"></textarea></div>
+    <div><label>Obra</label><textarea id="eObra" rows="4" placeholder="ex.: 10, 30, 90, 180, 240, 270, 330, 360, 420, 450, 480"></textarea></div>
+    <div><label>Serviço / Demanda interna</label><textarea id="eServico" rows="4" placeholder="Serviço: 5, 15, 25, 28, 30&#10;Demanda interna: 2, 7, 10"></textarea></div>
+  </div>
+  <div class="dica">Números separados por vírgula, um por etapa do fluxo padrão (dias desde o início). Botão "Prazos padrão" em Etapas e fluxo usa isso para preencher os prazos automaticamente.</div>
+
+  <button class="salvar" id="btnSalvar">Salvar configuração</button>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+
+    t.get('board', 'shared', K.config).then(function (cfg) {
+      cfg = cfg || {};
+      document.getElementById('equipe').value = (cfg.equipe || []).join('\n');
+      var p = cfg.prazos || {};
+      document.getElementById('pProjeto').value = p['Projeto'] || '';
+      document.getElementById('pObra').value = p['Obra'] || '';
+      document.getElementById('pServico').value = p['Serviço'] || '';
+      document.getElementById('pInterna').value = p['Demanda interna'] || '';
+      var pe = cfg.prazosEtapa || {};
+      document.getElementById('eProjeto').value = (pe['Projeto'] || []).join(', ');
+      document.getElementById('eObra').value = (pe['Obra'] || []).join(', ');
+      document.getElementById('eServico').value =
+        'Serviço: ' + (pe['Serviço'] || []).join(', ') +
+        (pe['Demanda interna'] ? '\nDemanda interna: ' + pe['Demanda interna'].join(', ') : '');
+    });
+
+    function parseNum(v) {
+      var n = Number(String(v).trim());
+      return (n > 0 && isFinite(n)) ? n : null;
+    }
+    function parseLista(txt) {
+      return String(txt).split(/[,\n]/).map(function (s) { return parseNum(s); })
+        .filter(function (n) { return n != null; });
+    }
+
+    document.getElementById('btnSalvar').addEventListener('click', function () {
+      var cfg = { equipe: [], prazos: {}, prazosEtapa: {} };
+
+      cfg.equipe = String(document.getElementById('equipe').value)
+        .split('\n').map(function (s) { return s.trim(); })
+        .filter(function (s) { return s.length > 0; });
+
+      var p = {};
+      var vP = parseNum(document.getElementById('pProjeto').value);
+      var vO = parseNum(document.getElementById('pObra').value);
+      var vS = parseNum(document.getElementById('pServico').value);
+      var vI = parseNum(document.getElementById('pInterna').value);
+      if (vP) p['Projeto'] = vP;
+      if (vO) p['Obra'] = vO;
+      if (vS) p['Serviço'] = vS;
+      if (vI) p['Demanda interna'] = vI;
+      cfg.prazos = p;
+
+      var pe = {};
+      var lP = parseLista(document.getElementById('eProjeto').value);
+      var lO = parseLista(document.getElementById('eObra').value);
+      if (lP.length) pe['Projeto'] = lP;
+      if (lO.length) pe['Obra'] = lO;
+      var txtServ = String(document.getElementById('eServico').value);
+      var mS = txtServ.match(/Servi[çc]o\s*:\s*([^\n]*)/i);
+      var mI = txtServ.match(/Demanda\s+interna\s*:\s*([^\n]*)/i);
+      var lS = mS ? parseLista(mS[1]) : [];
+      var lI = mI ? parseLista(mI[1]) : [];
+      if (lS.length) pe['Serviço'] = lS;
+      if (lI.length) pe['Demanda interna'] = lI;
+      cfg.prazosEtapa = pe;
+
+      t.set('board', 'shared', K.config, cfg).then(function () {
+        t.alert({ message: 'Configuração salva ✓', duration: 3 });
+        t.closePopup();
+      });
+    });
+  </script>
+</body>
+</html>

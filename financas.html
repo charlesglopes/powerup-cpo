@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Orçamento e custos</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 4px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 8px;
+           border: 2px solid #dfe1e6; border-radius: 3px; font-size: 14px; background: #fafbfc; }
+    input:focus, select:focus { outline: none; border-color: #0079bf; background: #fff; }
+    .dupla { display: flex; gap: 8px; }
+    .dupla > div { flex: 1; }
+    .resumo { display: flex; gap: 8px; margin-top: 12px; }
+    .box { flex: 1; border-radius: 4px; padding: 8px 10px; text-align: center; }
+    .box .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+    .box .val { font-size: 15px; font-weight: 700; margin-top: 2px; }
+    .b-orcado { background: #e4f0f6; color: #0d4b73; }
+    .b-gasto  { background: #f5e9b8; color: #6b5d07; }
+    .b-saldo  { background: #e3fcef; color: #04492c; }
+    .b-saldo.neg { background: #ffd6d0; color: #8c2b1d; }
+    .b-exec   { background: #ebecf0; color: #42526e; }
+    h4 { font-size: 12px; margin: 16px 0 4px; color: #5e6c84; }
+    .item { display: flex; gap: 6px; margin-bottom: 5px; align-items: center; }
+    .item input { padding: 6px 7px; font-size: 12px; border-width: 1px; }
+    .item .desc { flex: 3; }
+    .item .val { flex: 1.4; }
+    .item button { flex-shrink: 0; width: 26px; height: 30px; border: none; border-radius: 3px;
+                   background: #ebecf0; color: #42526e; cursor: pointer; font-weight: 700; }
+    .item button:hover { background: #ffd6d0; color: #8c2b1d; }
+    .add { width: 100%; margin-top: 4px; padding: 7px; border: 1px dashed #a5adba;
+           border-radius: 3px; background: #fafbfc; color: #5e6c84; font-size: 12px;
+           font-weight: 600; cursor: pointer; }
+    .add:hover { background: #ebecf0; }
+    .row { display: flex; gap: 8px; margin-top: 16px; }
+    .row button { flex: 1; padding: 9px 12px; border: none; border-radius: 3px;
+             font-size: 14px; font-weight: 600; cursor: pointer; }
+    .salvar { background: #0079bf; color: #fff; }
+    .limpar { background: #ebecf0; color: #172b4d; }
+    .aviso { font-size: 11px; color: #6b778c; margin-top: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h4>Orçamento estimado (ponto 7)</h4>
+  <div class="dupla">
+    <div>
+      <label for="orcado">Valor orçado (R$)</label>
+      <input type="number" id="orcado" step="0.01" min="0" placeholder="0,00">
+    </div>
+    <div>
+      <label for="fonte">Fonte do recurso</label>
+      <select id="fonte">
+        <option value="">—</option>
+        <option>Recurso próprio (UNIFAL-MG)</option>
+        <option>Reitoria / suplementação</option>
+        <option>Fundes</option>
+        <option>Emenda parlamentar</option>
+        <option>Convênio</option>
+        <option>Outra</option>
+      </select>
+    </div>
+  </div>
+
+  <h4>Itens de custo (ponto 6 — realize por etapa)</h4>
+  <div id="itens"></div>
+  <button class="add" id="btnAdd">+ adicionar item de custo</button>
+
+  <div class="resumo">
+    <div class="box b-orcado"><div class="lbl">Orçado</div><div class="val" id="rOrcado">R$ 0,00</div></div>
+    <div class="box b-gasto"><div class="lbl">Gasto</div><div class="val" id="rGasto">R$ 0,00</div></div>
+    <div class="box b-saldo" id="boxSaldo"><div class="lbl">Saldo</div><div class="val" id="rSaldo">R$ 0,00</div></div>
+    <div class="box b-exec"><div class="lbl">Execução</div><div class="val" id="rExec">0%</div></div>
+  </div>
+
+  <div class="row">
+    <button type="button" class="limpar" id="limpar">Limpar</button>
+    <button type="button" class="salvar" id="salvar">Salvar</button>
+  </div>
+  <p class="aviso">Salvo no armazenamento do card — alimenta os badges e o painel do quadro.</p>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+    var fin = { orcado: '', fonte: '', itens: [] };
+
+    function renderItens() {
+      var html = '';
+      (fin.itens || []).forEach(function (it, i) {
+        html += '<div class="item">';
+        html += '<input class="desc" data-i="' + i + '" data-c="desc" value="' + CPO.esc(it.desc) + '" placeholder="Descrição (ex.: Fundação — terraplenagem)">';
+        html += '<input class="val" data-i="' + i + '" data-c="valor" type="number" step="0.01" min="0" value="' + CPO.esc(it.valor) + '" placeholder="R$">';
+        html += '<button data-del="' + i + '" title="remover">✕</button>';
+        html += '</div>';
+      });
+      document.getElementById('itens').innerHTML = html;
+      resumo();
+    }
+
+    function resumo() {
+      var orc = Number(fin.orcado) || 0;
+      var gas = (fin.itens || []).reduce(function (s, it) { return s + (Number(it.valor) || 0); }, 0);
+      var saldo = orc - gas;
+      document.getElementById('rOrcado').textContent = CPO.fmtR$(orc);
+      document.getElementById('rGasto').textContent = CPO.fmtR$(gas);
+      document.getElementById('rSaldo').textContent = CPO.fmtR$(saldo);
+      document.getElementById('boxSaldo').className = 'box b-saldo' + (saldo < 0 ? ' neg' : '');
+      var exec = orc > 0 ? Math.round(gas * 100 / orc) : 0;
+      document.getElementById('rExec').textContent = exec + '%';
+    }
+
+    function lerCampos() {
+      fin.orcado = document.getElementById('orcado').value;
+      fin.fonte = document.getElementById('fonte').value;
+      fin.atualizadoEm = new Date().toISOString();
+    }
+
+    document.getElementById('btnAdd').addEventListener('click', function () {
+      lerCampos();
+      fin.itens = fin.itens || [];
+      fin.itens.push({ desc: '', valor: '' });
+      renderItens();
+    });
+
+    document.getElementById('itens').addEventListener('input', function (ev) {
+      var inp = ev.target.closest('input');
+      if (!inp) return;
+      var i = Number(inp.dataset.i);
+      fin.itens[i][inp.dataset.c] = inp.value;
+      resumo();
+    });
+    document.getElementById('itens').addEventListener('click', function (ev) {
+      var btn = ev.target.closest('button[data-del]');
+      if (!btn) return;
+      fin.itens.splice(Number(btn.dataset.del), 1);
+      renderItens();
+    });
+
+    document.getElementById('salvar').addEventListener('click', function () {
+      lerCampos();
+      t.set('card', 'shared', K.financas, fin).then(function () {
+        var gas = (fin.itens || []).reduce(function (s, it) { return s + (Number(it.valor) || 0); }, 0);
+        CPO.logEvent(t, 'atualizou orçamento', CPO.fmtR$(fin.orcado) + ' · gasto ' + CPO.fmtR$(gas));
+        t.alert({ message: 'Orçamento salvo ✓', duration: 2 });
+        t.closePopup();
+      });
+    });
+
+    document.getElementById('limpar').addEventListener('click', function () {
+      t.del('card', 'shared', K.financas).then(function () {
+        t.alert({ message: 'Dados financeiros removidos', duration: 2 });
+        t.closePopup();
+      });
+    });
+
+    // carga inicial — sugere itens por tipo de demanda
+    Promise.all([
+      t.get('card', 'shared', K.financas),
+      t.get('card', 'shared', K.triagem)
+    ]).then(function (r) {
+      fin = r[0] || { orcado: '', fonte: '', itens: [] };
+      fin.itens = fin.itens || [];
+      document.getElementById('orcado').value = fin.orcado || '';
+      document.getElementById('fonte').value = fin.fonte || '';
+      if (!fin.itens.length) {
+        var tri = r[1] || {};
+        var sugestoes = {
+          'Projeto': ['Elaboração do projeto (contratação)', 'Levantamentos (topográfico/cadastral)', 'ART/RRT'],
+          'Obra': ['Serviços preliminares', 'Estrutura e alvenaria', 'Instalações', 'Acabamentos'],
+          'Serviço': ['Material', 'Mão de obra'],
+          'Demanda interna': []
+        };
+        (sugestoes[tri.tipo] || []).forEach(function (desc) {
+          fin.itens.push({ desc: desc, valor: '' });
+        });
+      }
+      renderItens();
+    });
+  </script>
+</body>
+</html>

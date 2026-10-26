@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Triagem CPO</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 4px; }
+    select, input, textarea { width: 100%; box-sizing: border-box; padding: 8px;
+           border: 2px solid #dfe1e6; border-radius: 3px; font-size: 14px; background: #fafbfc; }
+    select:focus, input:focus, textarea:focus { outline: none; border-color: #0079bf; background: #fff; }
+    textarea { resize: vertical; }
+    .row { display: flex; gap: 8px; margin-top: 16px; }
+    button { flex: 1; padding: 9px 12px; border: none; border-radius: 3px;
+             font-size: 14px; font-weight: 600; cursor: pointer; }
+    .salvar { background: #0079bf; color: #fff; }
+    .salvar:hover { background: #006caa; }
+    .limpar { background: #ebecf0; color: #172b4d; }
+    .aviso { font-size: 11px; color: #6b778c; margin-top: 10px; text-align: center; }
+    .dupla { display: flex; gap: 8px; }
+    .dupla > div { flex: 1; }
+  </style>
+</head>
+<body>
+  <form id="form">
+    <label for="tipo">Tipo de demanda</label>
+    <select id="tipo" required>
+      <option value="">Selecione…</option>
+      <option>Projeto</option>
+      <option>Obra</option>
+      <option>Serviço</option>
+      <option>Demanda interna</option>
+    </select>
+
+    <div class="dupla">
+      <div>
+        <label for="prioridade">Prioridade</label>
+        <select id="prioridade">
+          <option>Média</option>
+          <option>Alta</option>
+          <option>Baixa</option>
+        </select>
+      </div>
+      <div>
+        <label for="prazo">Prazo</label>
+        <input type="date" id="prazo">
+      </div>
+    </div>
+
+    <div class="dupla">
+      <div>
+        <label for="sei">Nº do processo SEI</label>
+        <input type="text" id="sei" placeholder="Ex.: 23087.003206/2026-21">
+      </div>
+      <div>
+        <label for="resp">Responsável</label>
+        <input type="text" id="resp" list="dlEquipe" placeholder="Nome">
+      </div>
+    </div>
+
+    <label for="obs">Observações</label>
+    <textarea id="obs" rows="3" placeholder="Detalhes, condicionantes…"></textarea>
+
+    <div class="row">
+      <button type="button" class="limpar" id="limpar">Limpar</button>
+      <button type="submit" class="salvar">Salvar</button>
+    </div>
+    <p class="aviso">Salvo no armazenamento do card — visível para todo o quadro.</p>
+  </form>
+
+  <datalist id="dlEquipe"></datalist>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+
+    // Sugestões de responsável (equipe configurada no quadro)
+    t.get('board', 'shared', K.config).then(function (cfg) {
+      cfg = cfg || {};
+      document.getElementById('dlEquipe').innerHTML =
+        (cfg.equipe || []).map(function (n) {
+          return '<option value="' + CPO.esc(n) + '">';
+        }).join('');
+    });
+
+    // Preenche o formulário se já existir triagem salva
+    t.get('card', 'shared', K.triagem).then(function (d) {
+      if (!d) return;
+      document.getElementById('tipo').value = d.tipo || '';
+      document.getElementById('prioridade').value = d.prioridade || 'Média';
+      document.getElementById('prazo').value = d.prazo || '';
+      document.getElementById('sei').value = d.sei || '';
+      document.getElementById('resp').value = d.resp || '';
+      document.getElementById('obs').value = d.obs || '';
+    });
+
+    // Sugere prazo a partir dos prazos padrão configurados no quadro
+    document.getElementById('tipo').addEventListener('change', function () {
+      var tipo = this.value;
+      var campoPrazo = document.getElementById('prazo');
+      if (!tipo || campoPrazo.value) return;
+      t.get('board', 'shared', K.config).then(function (cfg) {
+        var dias = cfg && cfg.prazos && cfg.prazos[tipo];
+        if (!dias) return;
+        var d = new Date();
+        d.setDate(d.getDate() + Number(dias));
+        campoPrazo.value = d.toISOString().slice(0, 10);
+      });
+    });
+
+    document.getElementById('form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var dados = {
+        tipo: document.getElementById('tipo').value,
+        prioridade: document.getElementById('prioridade').value,
+        prazo: document.getElementById('prazo').value,
+        sei: document.getElementById('sei').value.trim(),
+        resp: document.getElementById('resp').value.trim(),
+        obs: document.getElementById('obs').value,
+        atualizadoEm: new Date().toISOString()
+      };
+      t.set('card', 'shared', K.triagem, dados).then(function () {
+        CPO.logEvent(t, 'classificou', dados.tipo + ' · ' + dados.prioridade);
+        t.alert({ message: 'Triagem salva ✓', duration: 3 });
+        t.closePopup();
+      });
+    });
+
+    document.getElementById('limpar').addEventListener('click', function () {
+      t.del('card', 'shared', K.triagem).then(function () {
+        t.alert({ message: 'Triagem removida', duration: 3 });
+        t.closePopup();
+      });
+    });
+  </script>
+</body>
+</html>

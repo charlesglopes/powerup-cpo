@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Cenário atual (por tipo)</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    .intro { font-size: 12px; color: #5e6c84; margin-bottom: 10px; }
+    .bloco { border: 1px solid #dfe1e6; border-radius: 4px; margin-bottom: 10px; overflow: hidden; }
+    .bl-head { padding: 8px 10px; background: #fafbfc; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .bl-head .nome { font-weight: 700; font-size: 13px; flex: 1; }
+    .bl-head .meta { font-size: 11px; color: #6b778c; }
+    .bl-body { padding: 8px 10px; border-top: 1px solid #ebecf0; }
+    .bl-body label { font-size: 11px; font-weight: 600; margin: 8px 0 2px; display: block; }
+    .bl-body textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #dfe1e6;
+        border-radius: 3px; font-size: 12px; background: #fafbfc; resize: vertical; font-family: inherit; }
+    .bl-body textarea:focus { outline: none; border-color: #0079bf; background: #fff; }
+    .fluxo { font-size: 11px; color: #6b778c; margin-top: 4px; line-height: 1.5; }
+    .fluxo b { color: #172b4d; }
+    .salva { font-size: 10px; color: #048243; font-weight: 700; margin-left: 6px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="intro">
+    Mapeamento do cenário atual <b>por tipo de demanda</b> (ponto 1): quem participa,
+    ferramentas usadas e por onde a informação circula. Preencha uma vez por tipo —
+    fica salvo no quadro e alimenta a padronização (ponto 3).
+  </div>
+  <div id="blocos"></div>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+    var tipos = ['Projeto', 'Obra', 'Serviço', 'Demanda interna'];
+    var cenario = {};
+
+    function render() {
+      var html = '';
+      tipos.forEach(function (tp) {
+        var d = cenario[tp] || {};
+        html += '<div class="bloco">';
+        html += '<div class="bl-head" data-tipo="' + CPO.esc(tp) + '">';
+        html += '<div class="nome">' + CPO.esc(tp) + '</div>';
+        html += '<div class="meta">' + (CPO.FLUXOS[tp].length) + ' etapas no fluxo padrão</div>';
+        html += '</div>';
+        html += '<div class="bl-body" style="display:none">';
+        html += '<label>Como é feito hoje (etapas na prática)</label>';
+        html += '<textarea rows="3" data-tipo="' + CPO.esc(tp) + '" data-c="como" placeholder="Ex.: chega por e-mail → SEI → planilha → reunião…">' + CPO.esc(d.como || '') + '</textarea>';
+        html += '<label>Quem participa de cada etapa</label>';
+        html += '<textarea rows="2" data-tipo="' + CPO.esc(tp) + '" data-c="quem" placeholder="Ex.: solicitante → CPO (projetista) → PROPLAN → licitação">' + CPO.esc(d.quem || '') + '</textarea>';
+        html += '<label>Ferramentas usadas</label>';
+        html += '<textarea rows="2" data-tipo="' + CPO.esc(tp) + '" data-c="ferramentas" placeholder="Ex.: SEI, e-mail, planilha Excel, AutoCAD, Trello">' + CPO.esc(d.ferramentas || '') + '</textarea>';
+        html += '<label>Onde a informação circula (e onde costuma travar)</label>';
+        html += '<textarea rows="2" data-tipo="' + CPO.esc(tp) + '" data-c="circula" placeholder="Ex.: SEI ↔ e-mail ↔ Trello; trava na aprovação do orçamento">' + CPO.esc(d.circula || '') + '</textarea>';
+        html += '<label>Gargalos e aprovações que demoram (ponto 2)</label>';
+        html += '<textarea rows="2" data-tipo="' + CPO.esc(tp) + '" data-c="gargalos" placeholder="Ex.: aprovação da Reitoria leva ~3 semanas; sobrecarga do projetista">' + CPO.esc(d.gargalos || '') + '</textarea>';
+        html += '<div class="fluxo">Fluxo padrão definido: <b>' + CPO.FLUXOS[tp].join(' → ') + '</b></div>';
+        html += '</div></div>';
+      });
+      document.getElementById('blocos').innerHTML = html;
+    }
+
+    var salvarDebounced = CPO.autoSave(function () {
+      t.set('board', 'shared', K.config, null).catch(function () {});
+      // grava cada tipo numa chave própria (limite de 4096 chars por chave)
+      var promessas = Object.keys(cenario).map(function (tp) {
+        return t.set('board', 'shared', K.cenario + tp, cenario[tp]);
+      });
+      Promise.all(promessas).then(function () {
+        var el = document.querySelector('.salva');
+        if (el) { el.style.display = 'inline'; setTimeout(function () { el.style.display = 'none'; }, 1500); }
+      });
+    }, 800);
+
+    document.getElementById('blocos').addEventListener('input', function (ev) {
+      var ta = ev.target.closest('textarea[data-tipo]');
+      if (!ta) return;
+      var tp = ta.dataset.tipo;
+      cenario[tp] = cenario[tp] || {};
+      cenario[tp][ta.dataset.c] = ta.value;
+      salvarDebounced();
+    });
+
+    document.getElementById('blocos').addEventListener('click', function (ev) {
+      var head = ev.target.closest('.bl-head');
+      if (head) {
+        var body = head.nextElementSibling;
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+      }
+    });
+
+    // carga inicial
+    Promise.all(tipos.map(function (tp) {
+      return t.get('board', 'shared', K.cenario + tp);
+    })).then(function (vals) {
+      tipos.forEach(function (tp, i) { if (vals[i]) cenario[tp] = vals[i]; });
+      render();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Etapas e fluxo</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           margin: 0; padding: 12px; color: #172b4d; background: #fff; }
+    .topo { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    select { padding: 6px 8px; border: 2px solid #dfe1e6; border-radius: 3px;
+             font-size: 13px; background: #fafbfc; }
+    .botoes { margin-left: auto; display: flex; gap: 6px; }
+    button { padding: 6px 10px; border: none; border-radius: 3px; font-size: 12px;
+             font-weight: 600; cursor: pointer; }
+    .prim { background: #0079bf; color: #fff; }
+    .sec { background: #ebecf0; color: #172b4d; }
+    .prog { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+    .barra { flex: 1; height: 8px; background: #ebecf0; border-radius: 4px; overflow: hidden; }
+    .barra > div { height: 100%; background: #0079bf; transition: width .3s; }
+    .ptxt { font-size: 12px; font-weight: 700; color: #172b4d; white-space: nowrap; }
+    .etapa { border: 1px solid #dfe1e6; border-radius: 4px; margin-bottom: 6px; overflow: hidden; }
+    .et-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+               background: #fafbfc; cursor: pointer; }
+    .et-head:hover { background: #f0f2f5; }
+    .num { width: 22px; height: 22px; border-radius: 50%; background: #dfe1e6; color: #42526e;
+           font-size: 11px; font-weight: 700; display: flex; align-items: center;
+           justify-content: center; flex-shrink: 0; }
+    .etapa.c .num { background: #61bd4f; color: #fff; }
+    .etapa.a .num { background: #0079bf; color: #fff; }
+    .et-nome { font-size: 13px; font-weight: 600; flex: 1; }
+    .etapa.c .et-nome { text-decoration: line-through; color: #6b778c; }
+    .et-meta { font-size: 10px; color: #6b778c; display: flex; gap: 4px; }
+    .tag { padding: 1px 6px; border-radius: 3px; background: #ebecf0; font-weight: 700; }
+    .tag.atraso { background: #ffd6d0; color: #8c2b1d; }
+    .tag.hoje { background: #f5e9b8; color: #6b5d07; }
+    .et-body { padding: 8px 10px 10px 40px; border-top: 1px solid #ebecf0; }
+    .et-body label { font-size: 11px; font-weight: 600; margin: 6px 0 2px; display: block; }
+    .et-body input, .et-body select { width: 100%; box-sizing: border-box; padding: 5px 7px;
+        border: 1px solid #dfe1e6; border-radius: 3px; font-size: 12px; background: #fafbfc; }
+    .st-row { display: flex; gap: 4px; margin-top: 6px; }
+    .st-row button { flex: 1; padding: 5px; font-size: 11px; }
+    .st-t { background: #ebecf0; color: #42526e; }
+    .st-a { background: #0079bf; color: #fff; }
+    .st-c { background: #61bd4f; color: #fff; }
+    .vazio { font-size: 13px; color: #6b778c; text-align: center; padding: 16px 0; }
+  </style>
+</head>
+<body>
+  <div class="topo">
+    <select id="selFluxo">
+      <option value="">— aplicar fluxo padrão —</option>
+      <option>Projeto</option>
+      <option>Obra</option>
+      <option>Serviço</option>
+      <option>Demanda interna</option>
+    </select>
+    <div class="botoes">
+      <button class="sec" id="btnPrazos">Prazos padrão</button>
+      <button class="prim" id="btnAplicar">Aplicar fluxo</button>
+    </div>
+  </div>
+  <div class="prog"><div class="barra" id="barra"><div style="width:0%"></div></div>
+    <span class="ptxt" id="ptxt">0/0</span></div>
+  <div id="lista"></div>
+
+  <script>
+    var t = TrelloPowerUp.iframe();
+    var K = CPO.CHAVES;
+    var etapas = [];
+    var tipoTriagem = '';
+    var prazosPadrao = {};
+
+    function render() {
+      var conc = etapas.filter(function (e) { return e.status === 'c'; }).length;
+      var pct = etapas.length ? Math.round(conc * 100 / etapas.length) : 0;
+      document.querySelector('#barra > div').style.width = pct + '%';
+      document.getElementById('ptxt').textContent = conc + '/' + etapas.length + ' (' + pct + '%)';
+
+      var hoje = CPO.hojeISO();
+      var html = '';
+      etapas.forEach(function (e, i) {
+        var cls = e.status === 'c' ? 'c' : (e.status === 'a' ? 'a' : '');
+        html += '<div class="etapa ' + cls + '">';
+        html += '<div class="et-head" data-i="' + i + '">';
+        html += '<div class="num">' + (e.status === 'c' ? '✓' : (i + 1)) + '</div>';
+        html += '<div class="et-nome">' + CPO.esc(e.nome) + '</div>';
+        var tags = '';
+        if (e.resp) tags += '<span class="tag">' + CPO.esc(e.resp) + '</span>';
+        if (e.prazo) {
+          var d = CPO.diasAte(e.prazo);
+          if (e.status !== 'c' && d < 0) tags += '<span class="tag atraso">' + Math.abs(d) + 'd atraso</span>';
+          else if (e.status !== 'c' && d === 0) tags += '<span class="tag hoje">hoje</span>';
+          else tags += '<span class="tag">' + CPO.dataBR(e.prazo) + '</span>';
+        }
+        html += '<div class="et-meta">' + tags + '</div>';
+        html += '</div>';
+        html += '<div class="et-body" style="display:none">';
+        html += '<label>Responsável</label>';
+        html += '<input type="text" data-campo="resp" data-i="' + i + '" value="' + CPO.esc(e.resp || '') + '" list="dlEq">';
+        html += '<label>Prazo da etapa</label>';
+        html += '<input type="date" data-campo="prazo" data-i="' + i + '" value="' + CPO.esc(e.prazo || '') + '">';
+        html += '<label>Critério de avanço (o que precisa estar pronto p/ avançar)</label>';
+        html += '<input type="text" data-campo="criterio" data-i="' + i + '" value="' + CPO.esc(e.criterio || '') + '" placeholder="Ex.: minuta revisada e validada pelo solicitante">';
+        html += '<label>Observação</label>';
+        html += '<input type="text" data-campo="obs" data-i="' + i + '" value="' + CPO.esc(e.obs || '') + '">';
+        html += '<div class="st-row">';
+        html += '<button class="st-t" data-st="t" data-i="' + i + '">A fazer</button>';
+        html += '<button class="st-a" data-st="a" data-i="' + i + '">Em andamento</button>';
+        html += '<button class="st-c" data-st="c" data-i="' + i + '">Concluída</button>';
+        html += '</div></div></div>';
+      });
+      document.getElementById('lista').innerHTML =
+        html || '<div class="vazio">Nenhuma etapa definida.<br>Escolha o fluxo acima e clique em "Aplicar fluxo".</div>';
+    }
+
+    function salvar(silencioso) {
+      return t.set('card', 'shared', K.etapas, { tipo: tipoTriagem, etapas: etapas })
+        .then(function () {
+          if (!silencioso) {
+            CPO.logEvent(t, 'atualizou etapas', etapas.length + ' etapas');
+            t.alert({ message: 'Etapas salvas ✓', duration: 2 });
+          }
+        });
+    }
+    var salvarDebounced = CPO.autoSave(function () { salvar(true); }, 700);
+
+    // ---- carga inicial ----
+    Promise.all([
+      t.get('card', 'shared', K.etapas),
+      t.get('card', 'shared', K.triagem),
+      t.get('board', 'shared', K.config)
+    ]).then(function (r) {
+      var salvo = r[0] || {};
+      var tri = r[1] || {};
+      var cfg = r[2] || {};
+      tipoTriagem = salvo.tipo || tri.tipo || '';
+      prazosPadrao = cfg.prazosEtapa || {};
+      etapas = salvo.etapas || [];
+      var dl = document.createElement('datalist');
+      dl.id = 'dlEq';
+      dl.innerHTML = (cfg.equipe || []).map(function (n) {
+        return '<option value="' + CPO.esc(n) + '">';
+      }).join('');
+      document.body.appendChild(dl);
+      if (tipoTriagem) document.getElementById('selFluxo').value = tipoTriagem;
+      render();
+    });
+
+    // ---- interações ----
+    document.getElementById('lista').addEventListener('click', function (ev) {
+      var head = ev.target.closest('.et-head');
+      if (head) {
+        var body = head.nextElementSibling;
+        body.style.display = body.style.display === 'none' ? 'block' : 'none';
+        return;
+      }
+      var st = ev.target.closest('button[data-st]');
+      if (st) {
+        var i = Number(st.dataset.i);
+        etapas[i].status = st.dataset.st;
+        if (st.dataset.st === 'c' && !etapas[i].fim) etapas[i].fim = CPO.hojeISO();
+        if (st.dataset.st !== 'c') etapas[i].fim = '';
+        render();
+        salvar();
+      }
+    });
+
+    document.getElementById('lista').addEventListener('input', function (ev) {
+      var inp = ev.target.closest('input[data-campo]');
+      if (!inp) return;
+      var i = Number(inp.dataset.i);
+      etapas[i][inp.dataset.campo] = inp.value;
+      salvarDebounced();
+      if (inp.dataset.campo === 'prazo' || inp.dataset.campo === 'resp') render();
+    });
+
+    document.getElementById('btnAplicar').addEventListener('click', function () {
+      var tipo = document.getElementById('selFluxo').value;
+      if (!tipo) { t.alert({ message: 'Escolha um fluxo primeiro', duration: 3 }); return; }
+      var nomes = CPO.FLUXOS[tipo];
+      // preserva dados de etapas já preenchidas com o mesmo nome
+      var antigo = {};
+      etapas.forEach(function (e) { antigo[e.nome] = e; });
+      etapas = nomes.map(function (n) {
+        var prev = antigo[n] || {};
+        return {
+          nome: n,
+          status: prev.status || 't',
+          resp: prev.resp || '',
+          prazo: prev.prazo || '',
+          criterio: prev.criterio || '',
+          obs: prev.obs || '',
+          fim: prev.fim || ''
+        };
+      });
+      tipoTriagem = tipo;
+      render();
+      salvar();
+    });
+
+    document.getElementById('btnPrazos').addEventListener('click', function () {
+      if (!tipoTriagem || !prazosPadrao[tipoTriagem]) {
+        t.alert({ message: 'Configure prazos padrão em "Configurar fluxo" (menu do quadro)', duration: 4 });
+        return;
+      }
+      var padrao = prazosPadrao[tipoTriagem];
+      var base = new Date();
+      etapas.forEach(function (e, i) {
+        if (!e.prazo && padrao[i] != null) {
+          var d = new Date(base);
+          d.setDate(d.getDate() + Number(padrao[i]));
+          e.prazo = d.toISOString().slice(0, 10);
+        }
+      });
+      render();
+      salvar();
+    });
+  </script>
+</body>
+</html>

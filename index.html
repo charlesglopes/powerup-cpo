@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Power-Up CPO — Connector</title>
+  <!-- Client library oficial do Trello -->
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script src="fluxos.js"></script>
+  <style>body { margin: 0; }</style>
+</head>
+<body>
+<script>
+  // URL base dos arquivos — funciona no GitHub Pages mesmo com subpasta
+  var BASE_URL = new URL('.', window.location.href).href;
+  var K = CPO.CHAVES;
+
+  function abrir(t, arquivo, titulo, altura) {
+    return t.popup({ title: titulo, url: BASE_URL + arquivo, height: altura });
+  }
+
+  window.TrelloPowerUp.initialize({
+
+    // ============================================================
+    // Botões no verso do card
+    // ============================================================
+    'card-buttons': function (t, opts) {
+      return [
+        {
+          icon: BASE_URL + 'icon.png',
+          text: 'Classificar demanda',
+          callback: function (t) { return abrir(t, 'triagem.html', 'Triagem CPO', 480); }
+        },
+        {
+          icon: BASE_URL + 'icon.png',
+          text: 'Etapas e fluxo',
+          callback: function (t) { return abrir(t, 'etapas.html', 'Etapas e fluxo', 560); }
+        },
+        {
+          icon: BASE_URL + 'icon.png',
+          text: 'Orçamento e custos',
+          callback: function (t) { return abrir(t, 'financas.html', 'Orçamento e custos', 480); }
+        }
+      ];
+    },
+
+    // ============================================================
+    // Seção no verso do card — resumo da triagem + progresso
+    // ============================================================
+    'card-back-section': function (t, opts) {
+      return t.get('card', 'shared', K.triagem).then(function (data) {
+        if (!data) return [];
+        return [{
+          title: 'Triagem CPO',
+          icon: BASE_URL + 'icon.png',
+          content: {
+            type: 'iframe',
+            url: t.signUrl(BASE_URL + 'secao.html'),
+            height: 150
+          }
+        }];
+      });
+    },
+
+    // ============================================================
+    // Badges no topo do verso do card (dinâmicos e clicáveis)
+    // ============================================================
+    'card-detail-badges': function (t, opts) {
+      return Promise.all([
+        t.get('card', 'shared', K.triagem),
+        t.get('card', 'shared', K.etapas),
+        t.get('card', 'shared', K.financas)
+      ]).then(function (r) {
+        var tri = r[0], et = r[1], fin = r[2], badges = [];
+
+        if (!tri || !tri.tipo) {
+          return [{
+            title: 'Triagem CPO',
+            text: 'Classificar demanda',
+            color: 'light-gray',
+            callback: function (t) { return abrir(t, 'triagem.html', 'Triagem CPO', 480); }
+          }];
+        }
+
+        badges.push({
+          title: 'Tipo',
+          text: tri.tipo,
+          color: CPO.corTipo(tri.tipo),
+          callback: function (t) { return abrir(t, 'triagem.html', 'Triagem CPO', 480); }
+        });
+
+        var list = (et && et.etapas) || [];
+        if (list.length) {
+          var conc = list.filter(function (e) { return e.status === 'c'; }).length;
+          badges.push({
+            title: 'Etapas',
+            text: conc + '/' + list.length + (conc === list.length ? ' ✓' : ''),
+            color: conc === list.length ? 'green' : 'blue',
+            callback: function (t) { return abrir(t, 'etapas.html', 'Etapas e fluxo', 560); }
+          });
+        }
+
+        if (tri.prazo) {
+          var dias = CPO.diasAte(tri.prazo);
+          var corPrazo = dias < 0 ? 'red' : (dias <= 3 ? 'yellow' : undefined);
+          badges.push({
+            title: 'Prazo',
+            text: CPO.dataBR(tri.prazo) + (dias < 0 ? ' (' + Math.abs(dias) + 'd atrasado)' : ''),
+            color: corPrazo,
+            callback: function (t) { return abrir(t, 'triagem.html', 'Triagem CPO', 480); }
+          });
+        }
+
+        if (fin && (Number(fin.orcado) || Number(fin.gasto))) {
+          var estourou = Number(fin.orcado) > 0 && Number(fin.gasto) > Number(fin.orcado);
+          badges.push({
+            title: 'Orçamento',
+            text: CPO.fmtR$(fin.orcado) + (Number(fin.gasto) ? ' · gasto ' + CPO.fmtR$(fin.gasto) : ''),
+            color: estourou ? 'red' : undefined,
+            callback: function (t) { return abrir(t, 'financas.html', 'Orçamento e custos', 480); }
+          });
+        }
+
+        return badges;
+      });
+    },
+
+    // ============================================================
+    // Badge na frente do card (visível no quadro)
+    // ============================================================
+    'card-badges': function (t, opts) {
+      return Promise.all([
+        t.get('card', 'shared', K.triagem),
+        t.get('card', 'shared', K.etapas)
+      ]).then(function (r) {
+        var tri = r[0], et = r[1];
+        if (!tri || !tri.tipo) return [];
+        var list = (et && et.etapas) || [];
+        var pct = '';
+        if (list.length) {
+          var conc = list.filter(function (e) { return e.status === 'c'; }).length;
+          pct = ' · ' + Math.round(conc * 100 / list.length) + '%';
+        }
+        return [{ text: tri.tipo + pct, color: CPO.corTipo(tri.tipo) }];
+      });
+    },
+
+    // ============================================================
+    // Botões no menu do quadro
+    // ============================================================
+    'board-buttons': function (t, opts) {
+      return [
+        {
+          icon: { dark: BASE_URL + 'icon.png', light: BASE_URL + 'icon.png' },
+          text: 'Painel do fluxo',
+          callback: function (t) { return abrir(t, 'painel.html', 'Painel do fluxo', 620); }
+        },
+        {
+          icon: { dark: BASE_URL + 'icon.png', light: BASE_URL + 'icon.png' },
+          text: 'Relatório de triagem',
+          callback: function (t) { return abrir(t, 'relatorio.html', 'Relatório de triagem', 520); }
+        },
+        {
+          icon: { dark: BASE_URL + 'icon.png', light: BASE_URL + 'icon.png' },
+          text: 'Cenário atual',
+          callback: function (t) { return abrir(t, 'cenario.html', 'Cenário atual (por tipo)', 560); }
+        },
+        {
+          icon: { dark: BASE_URL + 'icon.png', light: BASE_URL + 'icon.png' },
+          text: 'Configurar fluxo',
+          callback: function (t) { return abrir(t, 'config.html', 'Configurar fluxo', 560); }
+        }
+      ];
+    }
+
+  });
+</script>
+</body>
+</html>
